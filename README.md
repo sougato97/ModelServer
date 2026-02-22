@@ -26,6 +26,13 @@ Docker-first inference stack for chat + embeddings, with one API gateway and mul
 - For native Linux ROCm, passthrough must be adjusted to `/dev/kfd` and `/dev/dri`.
 - `llama.cpp` needs further hardening/fixes (especially CUDA build/link behavior) before relying on it in production.
 
+## Target hardware and platform
+
+- Primary development/runtime profile is WSL2.
+- CUDA profile tuning target GPU: NVIDIA RTX 4090 Laptop GPU (16 GB VRAM).
+- ROCm profile tuning target GPU: AMD Radeon RX 9070 XT (16 GB VRAM).
+- Native Linux ROCm passthrough alternatives are intentionally kept as commented guidance in `docker-compose.yml` (and related inference container definitions), so you can switch from WSL2 `/dev/dxg` mapping to `/dev/kfd` + `/dev/dri`.
+
 ## Models
 
 - Chat LLM: `Qwen/Qwen2.5-7B-Instruct-AWQ`
