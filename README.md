@@ -22,6 +22,7 @@ Docker-first inference stack for chat + embeddings, with one API gateway and mul
 - vLLM routing with both CUDA and ROCm profiles is supported.
 - CUDA memory constraints/defaults are tuned for an RTX 4090 Laptop GPU (16 GB VRAM).
 - ROCm compose defaults are optimized for WSL2 passthrough (`/dev/dxg` + WSL-mounted ROCm bridge libs).
+- ROCm GPU-utilization defaults are tuned for an RX 9070 XT (16 GB VRAM).
 - For native Linux ROCm, passthrough must be adjusted to `/dev/kfd` and `/dev/dri`.
 - `llama.cpp` needs further hardening/fixes (especially CUDA build/link behavior) before relying on it in production.
 

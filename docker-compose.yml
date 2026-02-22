@@ -158,6 +158,7 @@ services:
   # Optional: only enable when you specifically need this embedding model.
   # WSL2 default:
   # - Uses /dev/dxg and WSL-mounted ROCm bridge libraries.
+  # - ROCm defaults in this block are tuned for RX 9070 XT (16 GB VRAM).
   # Native Linux alternative:
   # - Comment the WSL2 device/mount lines and uncomment the /dev/kfd + /dev/dri block.
   vllm_embed_rocm_qwen3_embedding_4b:
@@ -182,7 +183,7 @@ services:
       - pooling
       - --gpu-memory-utilization
       - "${ROCM_VLLM_EMBED_QWEN_GPU_UTIL:-0.75}"
-      # On WSL2/ROCm for RX9070XT 16GB, 40960 can exceed available KV cache; keep this tunable.
+      # On WSL2/ROCm for RX 9070 XT 16 GB, 40960 can exceed available KV cache; keep this tunable.
       - --max-model-len
       - "${ROCM_VLLM_EMBED_QWEN_MAX_MODEL_LEN:-19660}"
     ports:
@@ -216,6 +217,7 @@ services:
   # --- vLLM ROCm: Embeddings server ---
   # WSL2 default:
   # - Uses /dev/dxg and WSL-mounted ROCm bridge libraries.
+  # - ROCm defaults in this block are tuned for RX 9070 XT (16 GB VRAM).
   # Native Linux alternative:
   # - Comment the WSL2 device/mount lines and uncomment the /dev/kfd + /dev/dri block.
   vllm_embed_rocm_intfloat_multilingual_e5_large_instruct:
@@ -271,6 +273,7 @@ services:
   # --- vLLM ROCm: Chat LLM server ---
   # WSL2 default:
   # - Uses /dev/dxg and WSL-mounted ROCm bridge libraries.
+  # - ROCm defaults in this block are tuned for RX 9070 XT (16 GB VRAM).
   # Native Linux alternative:
   # - Comment the WSL2 device/mount lines and uncomment the /dev/kfd + /dev/dri block.
   vllm_llm_rocm_qwen2-5_7b_instruct_awq:
