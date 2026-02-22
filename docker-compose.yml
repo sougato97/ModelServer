@@ -28,6 +28,7 @@ services:
       - "8080:8080"
 
   # --- vLLM CUDA: Chat LLM server ---
+  # CUDA memory utilization defaults are tuned for an RTX 4090 Laptop GPU (16 GB VRAM).
   vllm_llm_cuda_qwen2-5_7b_instruct_awq:
     build:
       context: .
@@ -69,6 +70,7 @@ services:
     profiles: ["cuda"]
 
   # --- vLLM CUDA: Embeddings server ---
+  # CUDA memory utilization defaults are tuned for an RTX 4090 Laptop GPU (16 GB VRAM).
   vllm_embed_cuda_intfloat_multilingual_e5_large_instruct:
     build:
       context: .
@@ -111,6 +113,7 @@ services:
 
   # --- vLLM CUDA: Embeddings server (Qwen3-Embedding-4B) ---
   # Optional; this model is heavy. Only enable when required.
+  # CUDA memory utilization defaults are tuned for an RTX 4090 Laptop GPU (16 GB VRAM).
   vllm_embed_cuda_qwen3_embedding_4b:
     build:
       context: .
@@ -152,6 +155,7 @@ services:
     profiles: ["cuda"]
 
   # --- vLLM ROCm: Embeddings server (Qwen3-Embedding-4B) ---
+  # Optional: only enable when you specifically need this embedding model.
   # WSL2 default:
   # - Uses /dev/dxg and WSL-mounted ROCm bridge libraries.
   # Native Linux alternative:
@@ -178,6 +182,7 @@ services:
       - pooling
       - --gpu-memory-utilization
       - "${ROCM_VLLM_EMBED_QWEN_GPU_UTIL:-0.75}"
+      # On WSL2/ROCm for RX9070XT 16GB, 40960 can exceed available KV cache; keep this tunable.
       - --max-model-len
       - "${ROCM_VLLM_EMBED_QWEN_MAX_MODEL_LEN:-19660}"
     ports:
@@ -209,6 +214,10 @@ services:
     profiles: ["rocm"]
 
   # --- vLLM ROCm: Embeddings server ---
+  # WSL2 default:
+  # - Uses /dev/dxg and WSL-mounted ROCm bridge libraries.
+  # Native Linux alternative:
+  # - Comment the WSL2 device/mount lines and uncomment the /dev/kfd + /dev/dri block.
   vllm_embed_rocm_intfloat_multilingual_e5_large_instruct:
     build:
       context: .
@@ -260,6 +269,10 @@ services:
     profiles: ["rocm"]
 
   # --- vLLM ROCm: Chat LLM server ---
+  # WSL2 default:
+  # - Uses /dev/dxg and WSL-mounted ROCm bridge libraries.
+  # Native Linux alternative:
+  # - Comment the WSL2 device/mount lines and uncomment the /dev/kfd + /dev/dri block.
   vllm_llm_rocm_qwen2-5_7b_instruct_awq:
     build:
       context: .
@@ -311,7 +324,9 @@ services:
     profiles: ["rocm"]
 
   # --- llama.cpp servers (ROCm / AMD) ---
-  # BACKEND=llama resolves through alias llama_llm_rocm.
+  # BACKEND=llama now resolves through stable aliases (llama_llm_rocm / llama_embed_rocm).
+  # Note: current device mapping below is native Linux style (/dev/kfd + /dev/dri).
+  # For WSL2, ROCm passthrough differs from this block.
   llama_llm_rocm_qwen2-5_7b_instruct_q4_k_m:
     build:
       context: .

@@ -20,6 +20,9 @@ Docker-first inference stack for chat + embeddings, with one API gateway and mul
 ## Current status
 
 - vLLM routing with both CUDA and ROCm profiles is supported.
+- CUDA memory constraints/defaults are tuned for an RTX 4090 Laptop GPU (16 GB VRAM).
+- ROCm compose defaults are optimized for WSL2 passthrough (`/dev/dxg` + WSL-mounted ROCm bridge libs).
+- For native Linux ROCm, passthrough must be adjusted to `/dev/kfd` and `/dev/dri`.
 - `llama.cpp` needs further hardening/fixes (especially CUDA build/link behavior) before relying on it in production.
 
 ## Models
@@ -34,6 +37,7 @@ Docker-first inference stack for chat + embeddings, with one API gateway and mul
 Prerequisites:
 - Docker + Docker Compose
 - NVIDIA setup for `cuda` profile, or ROCm setup for `rocm` profile
+- ROCm note: current vLLM compose mappings are WSL2-first. For native Linux, switch device passthrough in `docker-compose.yml` as annotated in comments.
 
 Start API + CUDA vLLM services:
 ```bash
@@ -109,3 +113,4 @@ curl -s -X POST http://localhost:8080/embeddings \
 - `model` in `/chat` is optional. If omitted on vLLM route, it defaults to `Qwen/Qwen2.5-7B-Instruct-AWQ`.
 - Qwen embedding requests are routed to the `7001` embedding endpoint when available.
 - For llama services, place GGUF files in `deployment/model_inference/compatible_weights/`.
+- Keep the ROCm comments in `docker-compose.yml` as-is: they document WSL2 defaults and the native Linux passthrough alternative.
