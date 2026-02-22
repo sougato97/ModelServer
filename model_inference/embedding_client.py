@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import List, Sequence
+from dataclasses import dataclass, field
+from typing import Dict, List, Sequence
 import math
 
 from openai import OpenAI
@@ -17,6 +17,8 @@ class EmbeddingConfig:
     api_key: str = "local"
     # vLLM expects the served model name; using the HF repo name is typical.
     model: str = "intfloat/multilingual-e5-large-instruct"
+    # Optional per-model routing (useful when different models are served on different ports).
+    model_base_urls: Dict[str, str] = field(default_factory=dict)
     timeout_s: float = 30.0
 
 
@@ -32,11 +34,7 @@ class EmbeddingClient:
             "Qwen/Qwen3-Embedding-4B",
             "Qwen3-Embedding-4B",
         }
-        self.client = OpenAI(
-            base_url=self.cfg.base_url,
-            api_key=self.cfg.api_key,
-            timeout=self.cfg.timeout_s,
-        )
+        self._clients: Dict[str, OpenAI] = {}
 
     def __call__(
         self,
@@ -66,7 +64,8 @@ class EmbeddingClient:
             texts = [f"{prefix}: {t}" for t in texts]
 
         model = self._resolve_model(model_name)
-        resp = self.client.embeddings.create(
+        client = self._get_client_for_model(model)
+        resp = client.embeddings.create(
             model=model,
             input=list(texts),
         )
@@ -84,6 +83,18 @@ class EmbeddingClient:
                 return "Qwen/Qwen3-Embedding-4B"
             return model_name
         return self.cfg.model
+
+    def _get_client_for_model(self, model: str) -> OpenAI:
+        base_url = self.cfg.model_base_urls.get(model, self.cfg.base_url)
+        client = self._clients.get(base_url)
+        if client is None:
+            client = OpenAI(
+                base_url=base_url,
+                api_key=self.cfg.api_key,
+                timeout=self.cfg.timeout_s,
+            )
+            self._clients[base_url] = client
+        return client
 
     @staticmethod
     def _l2_normalize(vec: List[float]) -> List[float]:

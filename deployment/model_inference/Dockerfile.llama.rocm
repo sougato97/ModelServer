@@ -1,0 +1,36 @@
+FROM rocm/dev-ubuntu-22.04:6.1 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git build-essential cmake ninja-build libcurl4-openssl-dev ca-certificates \
+    hipblas-dev rocblas-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+RUN git clone --depth 1 https://github.com/ggerganov/llama.cpp.git
+
+WORKDIR /src/llama.cpp
+# HIP/ROCm backend build
+RUN cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_HIP=ON -DLLAMA_BUILD_SERVER=ON \
+ && cmake --build build -j
+
+
+FROM rocm/dev-ubuntu-22.04:6.1 AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=builder /src/llama.cpp/build/bin /app/bin
+
+ENV PATH="/app/bin:${PATH}"
+ENV LD_LIBRARY_PATH="/app/bin:/opt/rocm/lib"
+
+EXPOSE 8000
+EXPOSE 7000
+
+CMD ["bash", "-lc", "echo 'Set CMD in docker-compose (llama-server ...)'; sleep infinity"]

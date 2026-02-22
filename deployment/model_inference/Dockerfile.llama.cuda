@@ -1,0 +1,62 @@
+FROM nvidia/cuda:12.1.1-devel-ubuntu22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git build-essential cmake ninja-build libcurl4-openssl-dev ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+RUN git clone --depth 1 https://github.com/ggerganov/llama.cpp.git
+
+WORKDIR /src/llama.cpp
+RUN set -eux; \
+    CUDA_STUB_DIR=""; \
+    for d in /usr/local/cuda/targets/x86_64-linux/lib/stubs /usr/local/cuda-*/targets/x86_64-linux/lib/stubs; do \
+      if [ -f "$d/libcuda.so" ]; then CUDA_STUB_DIR="$d"; break; fi; \
+    done; \
+    CUDA_COMPAT_DIR=""; \
+    for d in /usr/local/cuda/compat /usr/local/cuda-*/compat; do \
+      if [ -f "$d/libcuda.so.1" ]; then CUDA_COMPAT_DIR="$d"; break; fi; \
+    done; \
+    if [ -z "$CUDA_STUB_DIR" ] && [ -z "$CUDA_COMPAT_DIR" ]; then \
+      echo "Could not find CUDA stub/compat libcuda paths in builder image"; \
+      exit 1; \
+    fi; \
+    if [ -n "$CUDA_STUB_DIR" ] && [ ! -e "$CUDA_STUB_DIR/libcuda.so.1" ]; then \
+      ln -s "$CUDA_STUB_DIR/libcuda.so" "$CUDA_STUB_DIR/libcuda.so.1"; \
+    fi; \
+    if [ -n "$CUDA_COMPAT_DIR" ]; then \
+      mkdir -p /usr/lib/x86_64-linux-gnu; \
+      [ -e /usr/lib/x86_64-linux-gnu/libcuda.so.1 ] || ln -s "$CUDA_COMPAT_DIR/libcuda.so.1" /usr/lib/x86_64-linux-gnu/libcuda.so.1; \
+    fi; \
+    LINK_HINTS=""; \
+    [ -n "$CUDA_STUB_DIR" ] && LINK_HINTS="-Wl,-rpath-link,$CUDA_STUB_DIR"; \
+    [ -n "$CUDA_COMPAT_DIR" ] && LINK_HINTS="${LINK_HINTS:+$LINK_HINTS }-Wl,-rpath-link,$CUDA_COMPAT_DIR"; \
+    cmake -S . -B build -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DGGML_CUDA=ON \
+      -DLLAMA_BUILD_SERVER=ON \
+      "-DCMAKE_SHARED_LINKER_FLAGS=$LINK_HINTS" \
+      "-DCMAKE_EXE_LINKER_FLAGS=$LINK_HINTS" \
+    && cmake --build build --target llama-server -j
+
+
+FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04 AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=builder /src/llama.cpp/build/bin /app/bin
+
+ENV PATH="/app/bin:${PATH}"
+ENV LD_LIBRARY_PATH="/app/bin:${LD_LIBRARY_PATH}"
+
+EXPOSE 8000
+EXPOSE 7000
+
+CMD ["bash", "-lc", "echo 'Set CMD in docker-compose (llama-server ...)'; sleep infinity"]

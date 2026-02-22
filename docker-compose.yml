@@ -1,0 +1,353 @@
+services:
+  # --- Model Inference API (FastAPI, unified CUDA+ROCm routing) ---
+  model_inference:
+    build:
+      context: .
+      dockerfile: deployment/model_inference/Dockerfile.api
+    container_name: model_inference_api
+    restart: unless-stopped
+    environment:
+      # Defaults when a request does not specify backend/framework.
+      BACKEND: ${BACKEND:-vllm}
+      FRAMEWORK: ${FRAMEWORK:-cuda}
+      SPAWN_MODELS: ${SPAWN_MODELS:-0}
+      VLLM_LLM_MODEL: ${VLLM_LLM_MODEL:-Qwen/Qwen2.5-7B-Instruct-AWQ}
+      VLLM_EMBED_MODEL: ${VLLM_EMBED_MODEL:-intfloat/multilingual-e5-large-instruct}
+      # Optional endpoint overrides per backend/framework:
+      # VLLM_CUDA_LLM_BASE_URL: http://vllm_llm_cuda:8000/v1
+      # VLLM_CUDA_EMBED_E5_BASE_URL: http://vllm_embed_cuda:7000/v1
+      # VLLM_CUDA_EMBED_QWEN_BASE_URL: http://vllm_embed_qwen_cuda:7001/v1
+      # LLAMA_CUDA_LLM_BASE_URL: http://llama_llm_cuda:8000/v1
+      # LLAMA_CUDA_EMBED_E5_BASE_URL: http://llama_embed_cuda:7000/v1
+      # VLLM_ROCM_LLM_BASE_URL: http://vllm_llm_rocm:8000/v1
+      # VLLM_ROCM_EMBED_E5_BASE_URL: http://vllm_embed_rocm:7000/v1
+      # VLLM_ROCM_EMBED_QWEN_BASE_URL: http://vllm_embed_qwen_rocm:7001/v1
+      # LLAMA_ROCM_LLM_BASE_URL: http://llama_llm_rocm:8000/v1
+      # LLAMA_ROCM_EMBED_E5_BASE_URL: http://llama_embed_rocm:7000/v1
+    ports:
+      - "8080:8080"
+
+  # --- vLLM CUDA: Chat LLM server ---
+  vllm_llm_cuda_qwen2-5_7b_instruct_awq:
+    build:
+      context: .
+      dockerfile: deployment/model_inference/Dockerfile.vllm.cuda
+    container_name: vllm_llm_cuda_qwen2-5_7b_instruct_awq
+    restart: unless-stopped
+    environment:
+      HF_HOME: /cache/hf
+      TRANSFORMERS_CACHE: /cache/hf/transformers
+      HF_HUB_CACHE: /shared/hf/hub
+      VLLM_DOWNLOAD_DIR: /cache/vllm
+    command:
+      - serve
+      - Qwen/Qwen2.5-7B-Instruct-AWQ
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --gpu-memory-utilization
+      - "0.65"
+      - --max-model-len
+      - "16384"
+    ports:
+      - "8000:8000"
+    volumes:
+      - vllm_cache_cuda:/cache
+      - hf_hub_cache:/shared
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      default:
+        aliases:
+          - vllm_llm_cuda
+    profiles: ["cuda"]
+
+  # --- vLLM CUDA: Embeddings server ---
+  vllm_embed_cuda_intfloat_multilingual_e5_large_instruct:
+    build:
+      context: .
+      dockerfile: deployment/model_inference/Dockerfile.vllm.cuda
+    container_name: vllm_embed_cuda_intfloat_multilingual_e5_large_instruct
+    restart: unless-stopped
+    environment:
+      HF_HOME: /cache/hf
+      TRANSFORMERS_CACHE: /cache/hf/transformers
+      HF_HUB_CACHE: /shared/hf/hub
+      VLLM_DOWNLOAD_DIR: /cache/vllm
+    command:
+      - serve
+      - intfloat/multilingual-e5-large-instruct
+      - --host
+      - 0.0.0.0
+      - --port
+      - "7000"
+      - --task
+      - embedding
+      - --gpu-memory-utilization
+      - "0.20"
+    ports:
+      - "7000:7000"
+    volumes:
+      - vllm_cache_cuda:/cache
+      - hf_hub_cache:/shared
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      default:
+        aliases:
+          - vllm_embed_cuda
+    profiles: ["cuda"]
+
+  # --- vLLM CUDA: Embeddings server (Qwen3-Embedding-4B) ---
+  # Optional; this model is heavy. Only enable when required.
+  vllm_embed_cuda_qwen3_embedding_4b:
+    build:
+      context: .
+      dockerfile: deployment/model_inference/Dockerfile.vllm.cuda
+    container_name: vllm_embed_cuda_qwen3_embedding_4b
+    restart: unless-stopped
+    environment:
+      HF_HOME: /cache/hf
+      TRANSFORMERS_CACHE: /cache/hf/transformers
+      HF_HUB_CACHE: /shared/hf/hub
+      VLLM_DOWNLOAD_DIR: /cache/vllm
+    command:
+      - serve
+      - Qwen/Qwen3-Embedding-4B
+      - --host
+      - 0.0.0.0
+      - --port
+      - "7001"
+      - --task
+      - embedding
+      - --gpu-memory-utilization
+      - "0.80"
+    ports:
+      - "7001:7001"
+    volumes:
+      - vllm_cache_cuda:/cache
+      - hf_hub_cache:/shared
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      default:
+        aliases:
+          - vllm_embed_qwen_cuda
+    profiles: ["cuda"]
+
+  # --- vLLM ROCm: Embeddings server (Qwen3-Embedding-4B) ---
+  # WSL2 default:
+  # - Uses /dev/dxg and WSL-mounted ROCm bridge libraries.
+  # Native Linux alternative:
+  # - Comment the WSL2 device/mount lines and uncomment the /dev/kfd + /dev/dri block.
+  vllm_embed_rocm_qwen3_embedding_4b:
+    build:
+      context: .
+      dockerfile: deployment/model_inference/Dockerfile.vllm.rocm
+    container_name: vllm_embed_rocm_qwen3_embedding_4b
+    restart: unless-stopped
+    environment:
+      HF_HOME: /cache/hf
+      TRANSFORMERS_CACHE: /cache/hf/transformers
+      HF_HUB_CACHE: /shared/hf/hub
+      VLLM_DOWNLOAD_DIR: /cache/vllm
+    command:
+      - serve
+      - Qwen/Qwen3-Embedding-4B
+      - --host
+      - 0.0.0.0
+      - --port
+      - "7001"
+      - --runner
+      - pooling
+      - --gpu-memory-utilization
+      - "${ROCM_VLLM_EMBED_QWEN_GPU_UTIL:-0.75}"
+      - --max-model-len
+      - "${ROCM_VLLM_EMBED_QWEN_MAX_MODEL_LEN:-19660}"
+    ports:
+      - "7001:7001"
+    volumes:
+      - vllm_cache_rocm:/cache
+      - hf_hub_cache:/shared
+      - /usr/lib/wsl/lib/libdxcore.so:/usr/lib/libdxcore.so:ro
+      - /opt/rocm/lib/libhsa-runtime64.so.1:/opt/rocm/lib/libhsa-runtime64.so.1:ro
+    devices:
+      - /dev/dxg
+    # Native Linux ROCm passthrough:
+    # devices:
+    #   - /dev/kfd
+    #   - /dev/dri
+    group_add:
+      - video
+      - render
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp=unconfined
+    ipc: host
+    shm_size: "8gb"
+    networks:
+      default:
+        aliases:
+          - vllm_embed_qwen_rocm
+    profiles: ["rocm"]
+
+  # --- vLLM ROCm: Embeddings server ---
+  vllm_embed_rocm_intfloat_multilingual_e5_large_instruct:
+    build:
+      context: .
+      dockerfile: deployment/model_inference/Dockerfile.vllm.rocm
+    container_name: vllm_embed_rocm_intfloat_multilingual_e5_large_instruct
+    restart: unless-stopped
+    environment:
+      HF_HOME: /cache/hf
+      TRANSFORMERS_CACHE: /cache/hf/transformers
+      HF_HUB_CACHE: /shared/hf/hub
+      VLLM_DOWNLOAD_DIR: /cache/vllm
+    command:
+      - serve
+      - intfloat/multilingual-e5-large-instruct
+      - --host
+      - 0.0.0.0
+      - --port
+      - "7000"
+      - --runner
+      - pooling
+      - --gpu-memory-utilization
+      - "${ROCM_VLLM_EMBED_E5_GPU_UTIL:-0.15}"
+    ports:
+      - "7000:7000"
+    volumes:
+      - vllm_cache_rocm:/cache
+      - hf_hub_cache:/shared
+      - /usr/lib/wsl/lib/libdxcore.so:/usr/lib/libdxcore.so:ro
+      - /opt/rocm/lib/libhsa-runtime64.so.1:/opt/rocm/lib/libhsa-runtime64.so.1:ro
+    devices:
+      - /dev/dxg
+    # Native Linux ROCm passthrough:
+    # devices:
+    #   - /dev/kfd
+    #   - /dev/dri
+    group_add:
+      - video
+      - render
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp=unconfined
+    ipc: host
+    shm_size: "8gb"
+    networks:
+      default:
+        aliases:
+          - vllm_embed_rocm
+    profiles: ["rocm"]
+
+  # --- vLLM ROCm: Chat LLM server ---
+  vllm_llm_rocm_qwen2-5_7b_instruct_awq:
+    build:
+      context: .
+      dockerfile: deployment/model_inference/Dockerfile.vllm.rocm
+    container_name: vllm_llm_rocm_qwen2-5_7b_instruct_awq
+    restart: unless-stopped
+    environment:
+      HF_HOME: /cache/hf
+      TRANSFORMERS_CACHE: /cache/hf/transformers
+      HF_HUB_CACHE: /shared/hf/hub
+      VLLM_DOWNLOAD_DIR: /cache/vllm
+    command:
+      - serve
+      - Qwen/Qwen2.5-7B-Instruct-AWQ
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --gpu-memory-utilization
+      - "${ROCM_VLLM_LLM_GPU_UTIL:-0.60}"
+      - --max-model-len
+      - "16384"
+    ports:
+      - "8000:8000"
+    volumes:
+      - vllm_cache_rocm:/cache
+      - hf_hub_cache:/shared
+      - /usr/lib/wsl/lib/libdxcore.so:/usr/lib/libdxcore.so:ro
+      - /opt/rocm/lib/libhsa-runtime64.so.1:/opt/rocm/lib/libhsa-runtime64.so.1:ro
+    devices:
+      - /dev/dxg
+    # Native Linux ROCm passthrough:
+    # devices:
+    #   - /dev/kfd
+    #   - /dev/dri
+    group_add:
+      - video
+      - render
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp=unconfined
+    ipc: host
+    shm_size: "8gb"
+    networks:
+      default:
+        aliases:
+          - vllm_llm_rocm
+    profiles: ["rocm"]
+
+  # --- llama.cpp servers (ROCm / AMD) ---
+  # BACKEND=llama resolves through alias llama_llm_rocm.
+  llama_llm_rocm_qwen2-5_7b_instruct_q4_k_m:
+    build:
+      context: .
+      dockerfile: deployment/model_inference/Dockerfile.llama.rocm
+    container_name: llama_llm_rocm_qwen2-5_7b_instruct_q4_k_m
+    restart: unless-stopped
+    environment:
+      HF_HOME: /cache/hf
+      TRANSFORMERS_CACHE: /cache/hf/transformers
+      HF_HUB_CACHE: /shared/hf/hub
+    command:
+      - bash
+      - -lc
+      - >
+        llama-server -m /models/Qwen2.5-7B-Instruct.Q4_K_M.gguf -ngl 999 --host 0.0.0.0 --port 8000
+    volumes:
+      - ./deployment/model_inference/compatible_weights:/models:ro
+      - llama_cache_rocm:/cache
+      - hf_hub_cache:/shared
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+      - render
+    ipc: host
+    shm_size: "8gb"
+    networks:
+      default:
+        aliases:
+          - llama_llm_rocm
+    profiles: ["rocm"]
+
+volumes:
+  vllm_cache_cuda:
+  vllm_cache_rocm:
+  llama_cache_cuda:
+  llama_cache_rocm:
+  hf_hub_cache:

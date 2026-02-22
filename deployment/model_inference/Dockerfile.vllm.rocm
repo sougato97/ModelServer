@@ -1,0 +1,26 @@
+FROM rocm/dev-ubuntu-24.04:7.0-complete
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PATH="/opt/venv/bin:${PATH}"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates git libgomp1 build-essential libopenmpi3t64 \
+    python3 python3-pip python3-venv \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m venv /opt/venv \
+ && pip install --no-cache-dir --upgrade pip uv
+
+# ROCm wheels are published outside PyPI.
+# vLLM ROCm wheels currently target Python 3.12 + ROCm 7.x.
+RUN uv pip install \
+    --extra-index-url https://wheels.vllm.ai/rocm/0.15.0/rocm700 \
+    "openai>=1.99.1" "pydantic>=2.12.0" \
+    "vllm==0.15.0+rocm700"
+
+COPY deployment/model_inference/dependencies/vllm_rocm_wsl2_entrypoint.py /opt/vllm_rocm_wsl2_entrypoint.py
+COPY deployment/model_inference/dependencies/vllm_rocm_sitecustomize.py /usr/lib/python3.12/sitecustomize.py
+
+EXPOSE 8000
+
+ENTRYPOINT ["python", "/opt/vllm_rocm_wsl2_entrypoint.py"]
